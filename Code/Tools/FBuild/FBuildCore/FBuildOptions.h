@@ -61,6 +61,8 @@ public:
     bool        m_GenerateDotGraphFull              = false;
     bool        m_GenerateCompilationDatabase       = false;
     bool        m_NoUnity                           = false;
+    uint32_t    m_ProcessTimeoutSecs                = 0; // Default to no timeout
+    uint32_t    m_ProcessOutputTimeoutSecs          = 0; // Default to no timeout
 
     // Cache
     bool        m_UseCacheRead                      = false;

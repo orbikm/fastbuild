@@ -360,7 +360,7 @@ ObjectNode::~ObjectNode()
     // Handle MSCL warnings if not already a failure
     // If "warnings as errors" is enabled (/WX) we don't need to check
     // (since compilation will fail anyway, and the output will be shown)
-    if ( ( ch.GetResult() == 0 ) && !m_CompilerFlags.IsWarningsAsErrorsMSVC() )
+    if ( ( ( ch.GetExitReason() == Process::PROCESS_EXIT_NORMAL ) && ( ch.GetExitCode() == 0 ) ) && !m_CompilerFlags.IsWarningsAsErrorsMSVC() )
     {
         if ( IsClangCl() )
         {
@@ -1874,7 +1874,8 @@ bool ObjectNode::BuildPreprocessedOutput( const Args & fullArgs, Job * job, bool
         // stderr, and we don't want to see that unless there is a problem)
         // NOTE: Output is omitted in case the compiler has been aborted because we don't care about the errors
         // caused by the manual process abortion (process killed)
-        if ( ( ch.GetResult() != 0 ) && !ch.HasAborted() )
+        if ( ( ch.GetExitReason() != Process::PROCESS_EXIT_ABORTED ) && 
+             ( ch.GetExitReason() != Process::PROCESS_EXIT_NORMAL || ch.GetExitCode() != 0 ) )
         {
             // Use the error text, but if it's empty, use the output
             if ( ch.GetErr().IsEmpty() == false )
@@ -2191,7 +2192,7 @@ bool ObjectNode::BuildFinalOutput( Job * job, const Args & fullArgs ) const
     if ( !ch.SpawnCompiler( job, GetName(), GetCompiler(), compiler, fullArgs, workingDir.IsEmpty() ? nullptr : workingDir.Get() ) )
     {
         // did spawn fail, or did we spawn and fail to compile?
-        if ( ch.GetResult() != 0 )
+        if ( ( ch.GetExitReason() != Process::PROCESS_EXIT_NORMAL ) || ( ch.GetExitCode() != 0 ) )
         {
             // failed to compile
 
@@ -2210,7 +2211,7 @@ bool ObjectNode::BuildFinalOutput( Job * job, const Args & fullArgs ) const
     else
     {
         // Handle warnings for compilation that passed
-        if ( ch.GetResult() == 0 )
+        if ( ch.GetExitReason() == Process::PROCESS_EXIT_NORMAL && ch.GetExitCode() == 0 )
         {
             if ( IsMSVC() )
             {
@@ -2240,7 +2241,7 @@ bool ObjectNode::BuildFinalOutput( Job * job, const Args & fullArgs ) const
         // output file to disk. In that case, we write the static analysis
         // results as the output. This avoids a "file missing despite success"
         // error
-        if ( ch.GetResult() == 0 )
+        if ( ch.GetExitReason() == Process::PROCESS_EXIT_NORMAL && ch.GetExitCode() == 0 )
         {
             if ( IsClang() || IsClangCl() )
             {
@@ -2265,7 +2266,8 @@ bool ObjectNode::BuildFinalOutput( Job * job, const Args & fullArgs ) const
 ObjectNode::CompileHelper::CompileHelper( bool handleOutput, const volatile bool * abortPointer )
     : m_HandleOutput( handleOutput )
     , m_Process( FBuild::GetAbortBuildPointer(), abortPointer )
-    , m_Result( 0 )
+    , m_ExitCode( 0 )
+    , m_ExitReason( Process::PROCESS_EXIT_UNDEFINED )
 {
 }
 
@@ -2309,17 +2311,17 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
     }
 
     // capture all of the stdout and stderr
-    m_Process.ReadAllData( m_Out, m_Err );
+    m_Process.ReadAllData( m_Out, m_Err, FBuild::Get().GetOptions().m_ProcessTimeoutSecs * 1000, FBuild::Get().GetOptions().m_ProcessOutputTimeoutSecs * 1000 );
 
     // Get result
-    m_Result = m_Process.WaitForExit();
-    if ( m_Process.HasAborted() )
+    m_ExitReason = m_Process.WaitForExit(m_ExitCode);
+    if ( m_ExitReason == Process::PROCESS_EXIT_ABORTED )
     {
         return false;
     }
 
     // Handle special types of failures
-    HandleSystemFailures( job, m_Result, m_Out, m_Err );
+    HandleSystemFailures( job, m_ExitCode, m_Out, m_Err );
 
     #if defined( ENABLE_FAKE_SYSTEM_FAILURE )
         // Fake system failure for tests
@@ -2332,8 +2334,9 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
             }
 
             // Add fake failure
-            ASSERT( m_Result == 0 ); // Should not have real failures if we're faking them
-            m_Result = 1;
+            ASSERT( m_ExitCode == 0 ); // Should not have real failures if we're faking them
+            m_ExitReason = Process::PROCESS_EXIT_NORMAL;
+            m_ExitCode = 1;
             job->Error( "Injecting system failure (sFakeSystemFailure)\n" );
             job->OnSystemError();
 
@@ -2369,15 +2372,30 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
     }
 
     // failed?
-    if ( m_Result != 0 )
+    const bool buildFailed = ( m_ExitReason != Process::PROCESS_EXIT_NORMAL ) || ( m_ExitReason != 0 );
+    if ( buildFailed )
     {
+        const bool showOutput = m_HandleOutput ||
+            ( m_ExitReason == Process::PROCESS_EXIT_TIMEOUT ) ||
+            ( m_ExitReason == Process::PROCESS_EXIT_TIMEOUT_INACTIVE);
+
         // output 'stdout' which may contain errors for some compilers
-        if ( m_HandleOutput )
+        if ( showOutput )
         {
             DumpOutput( job, name, m_Out );
         }
 
-        job->Error( "Failed to build Object. Error: %s Target: '%s'\n", ERROR_STR( m_Result ), name.Get() );
+        AStackString<32> errorStr;
+        if ( m_ExitReason == Process::PROCESS_EXIT_NORMAL )
+        {
+            errorStr = ERROR_STR( m_ExitCode );
+        }
+        else
+        {
+            errorStr = Process::ExitReasonToString( m_ExitReason );
+        }
+
+        job->Error( "Failed to build Object. Error: %s Target: '%s'\n", errorStr.Get(), name.Get() );
 
         return false;
     }

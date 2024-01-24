@@ -54,7 +54,9 @@ void TestResources::BuildResource() const
     // spawn exe which does a runtime check that the resource is availble
     Process p;
     TEST_ASSERT( p.Spawn( "../tmp/Test/Resources/exe.exe", nullptr, nullptr, nullptr ) );
-    const int ret = p.WaitForExit();
+    int ret = 0;
+    const uint8_t exitReason = p.WaitForExit(ret);
+    TEST_ASSERT( exitReason == Process::PROCESS_EXIT_NORMAL ); // verify expected exit reason
     TEST_ASSERT( ret == 1 ); // verify expected ret code
 
     // Check stats

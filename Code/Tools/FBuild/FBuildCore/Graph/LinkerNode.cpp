@@ -243,24 +243,27 @@ LinkerNode::~LinkerNode()
         // capture all of the stdout and stderr
         AString memOut;
         AString memErr;
-        p.ReadAllData( memOut, memErr );
+        p.ReadAllData( memOut, memErr, FBuild::Get().GetOptions().m_ProcessTimeoutSecs * 1000, FBuild::Get().GetOptions().m_ProcessOutputTimeoutSecs * 1000 );
 
         ASSERT( !p.IsRunning() );
-        // Get result
-        const int result = p.WaitForExit();
-        if ( p.HasAborted() )
+        // Get exit code
+        int32_t exitCode = 0;
+        const uint8_t exitReason = p.WaitForExit(exitCode);
+        if ( exitReason == Process::PROCESS_EXIT_ABORTED )
         {
             return NODE_RESULT_FAILED;
         }
 
+        const bool buildFailed = ( exitReason != Process::PROCESS_EXIT_NORMAL ) || ( exitCode != 0 );
+
         // did the executable fail?
-        if ( result != 0 )
+        if ( buildFailed )
         {
             // Handle bugs in the MSVC linker
             if ( GetFlag( LINK_FLAG_MSVC ) && ( attempt == 1 ) )
             {
                 // Did the linker have an ICE (crash) (LNK1000)?
-                if ( result == 1000 )
+                if ( exitCode == 1000 )
                 {
                     FLOG_WARN( "FBuild: Warning: Linker crashed (LNK1000), retrying '%s'", GetName().Get() );
                     continue; // try again
@@ -269,7 +272,7 @@ LinkerNode::~LinkerNode()
                 // Did the linker encounter "fatal error LNK1136: invalid or corrupt file"?
                 // The MSVC toolchain (as of VS2017) seems to occasionally end up with a
                 // corrupt PDB file.
-                if ( result == 1136 )
+                if ( exitCode == 1136 )
                 {
                     FLOG_WARN( "FBuild: Warning: Linker corrupted the PDB (LNK1136), retrying '%s'", GetName().Get() );
                     continue; // try again
@@ -278,7 +281,7 @@ LinkerNode::~LinkerNode()
                 // Did the linker encounter "fatal error LNK1201: error writing to program database"?
                 // The MSVC toolchain (as of VS2019 upto 16.7.5) occasionally emits this error. It seems there
                 // is a bug where the PDB size can grow a lot and this error will start to occur.
-                if ( result == 1201 )
+                if ( exitCode == 1201 )
                 {
                     FLOG_WARN( "FBuild: Warning: Linker failed with (LNK1201), retrying '%s'", GetName().Get() );
                     continue; // try again
@@ -289,7 +292,7 @@ LinkerNode::~LinkerNode()
                 // (The linker or mspdbsrv.exe (as of VS2017) seems to have bugs which cause the PDB
                 // to sometimes be corrupted when doing very large links, possibly because the linker
                 // is running out of memory)
-                if ( result == 1318 )
+                if ( exitCode == 1318 )
                 {
                     FLOG_WARN( "FBuild: Warning: Linker corrupted the PDB (LNK1318), retrying '%s'", GetName().Get() );
                     continue; // try again
@@ -306,8 +309,18 @@ LinkerNode::~LinkerNode()
                 job->ErrorPreformatted( memErr.Get() );
             }
 
+            AStackString<32> errorStr;
+            if ( exitReason == Process::PROCESS_EXIT_NORMAL )
+            {
+                errorStr = ERROR_STR( exitCode );
+            }
+            else
+            {
+                errorStr = Process::ExitReasonToString(exitReason);
+            }
+
             // some other (genuine) linker failure
-            FLOG_ERROR( "Failed to build %s. Error: %s Target: '%s'", GetDLLOrExe(), ERROR_STR( result ), GetName().Get() );
+            FLOG_ERROR( "Failed to build %s. Error: %s Target: '%s'", GetDLLOrExe(), errorStr.Get(), GetName().Get() );
             return NODE_RESULT_FAILED;
         }
         else
@@ -355,19 +368,21 @@ LinkerNode::~LinkerNode()
         // capture all of the stdout and stderr
         AString memOut;
         AString memErr;
-        stampProcess.ReadAllData( memOut, memErr );
+        stampProcess.ReadAllData( memOut, memErr, FBuild::Get().GetOptions().m_ProcessTimeoutSecs * 1000, FBuild::Get().GetOptions().m_ProcessOutputTimeoutSecs * 1000 );
         ASSERT( !stampProcess.IsRunning() );
 
         // Get result
-        const int result = stampProcess.WaitForExit();
-        if ( stampProcess.HasAborted() )
+        int32_t exitCode = 0;
+        const uint8_t exitReason = stampProcess.WaitForExit(exitCode);
+        if ( exitReason == Process::PROCESS_EXIT_ABORTED )
         {
             return NODE_RESULT_FAILED;
         }
 
+        const bool buildFailed = (exitReason != Process::PROCESS_EXIT_NORMAL ) || ( exitCode != 0 );
+
         // Show output if desired
-        const bool showCommandOutput = ( result != 0 ) ||
-                                       FBuild::Get().GetOptions().m_ShowCommandOutput;
+        const bool showCommandOutput = buildFailed || FBuild::Get().GetOptions().m_ShowCommandOutput;
         if ( showCommandOutput )
         {
             Node::DumpOutput( job, memOut );
@@ -375,9 +390,18 @@ LinkerNode::~LinkerNode()
         }
 
         // did the executable fail?
-        if ( result != 0 )
+        if ( buildFailed )
         {
-            FLOG_ERROR( "Failed to stamp %s. Error: %s Target: '%s' StampExe: '%s'", GetDLLOrExe(), ERROR_STR( result ), GetName().Get(), m_LinkerStampExe.Get() );
+            AStackString<32> errorStr;
+            if ( exitReason == Process::PROCESS_EXIT_NORMAL )
+            {
+                errorStr = ERROR_STR( exitCode );
+            }
+            else
+            {
+                errorStr = Process::ExitReasonToString( exitReason );
+            }
+            FLOG_ERROR( "Failed to stamp %s. Error: %s Target: '%s' StampExe: '%s'", GetDLLOrExe(), errorStr.Get(), GetName().Get(), m_LinkerStampExe.Get() );
             return NODE_RESULT_FAILED;
         }
 

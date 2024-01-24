@@ -71,7 +71,9 @@ void TestExe::CheckValidExe() const
 {
     Process p;
     TEST_ASSERT( p.Spawn( "../tmp/Test/Exe/exe.exe", nullptr, nullptr, nullptr ) );
-    const int ret = p.WaitForExit();
+    int ret = 0;
+    const uint8_t exitReason = p.WaitForExit(ret);
+    TEST_ASSERT( exitReason == Process::PROCESS_EXIT_NORMAL ); // verify expect exit reason
     TEST_ASSERT( ret == 99 ); // verify expected ret code
 }
 
