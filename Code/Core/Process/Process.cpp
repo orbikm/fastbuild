@@ -51,6 +51,7 @@ Process::Process( const volatile bool * mainAbortFlag,
     , m_ChildPID( -1 )
     , m_HasAlreadyWaitTerminated( false )
 #endif
+    , m_ExitReason( PROCESS_EXIT_UNDEFINED )
     , m_MainAbortFlag( mainAbortFlag )
     , m_AbortFlag( abortFlag )
 {
@@ -65,7 +66,8 @@ Process::~Process()
 {
     if ( m_Started )
     {
-        WaitForExit();
+        int32_t exitCode = 0;
+        WaitForExit(exitCode);
     }
 }
 
@@ -464,16 +466,21 @@ bool Process::IsRunning() const
 
 // WaitForExit
 //------------------------------------------------------------------------------
-int32_t Process::WaitForExit()
+Process::ExitReason Process::WaitForExit(int32_t & exitCodeOut)
 {
     ASSERT( m_Started );
     m_Started = false;
 
-    #if defined( __WINDOWS__ )
+    if ( m_ExitReason == PROCESS_EXIT_TIMEOUT ||
+         m_ExitReason == PROCESS_EXIT_TIMEOUT_INACTIVE )
+    {
+        return m_ExitReason;
+    }
 
+    #if defined( __WINDOWS__ )
         DWORD exitCode = 0;
 
-        if ( HasAborted() == false )
+        if ( m_ExitReason != PROCESS_EXIT_ABORTED )
         {
             // Don't wait if using jobs and the process has been aborted.
             // It will be killed along with the fbuild process if the TerminateProcess has failed for any reason and
@@ -494,7 +501,8 @@ int32_t Process::WaitForExit()
         VERIFY( ::CloseHandle( GetProcessInfo().hProcess ) );
         VERIFY( ::CloseHandle( GetProcessInfo().hThread ) );
 
-        return (int32_t)exitCode;
+        exitCodeOut = (int32_t)exitCode;
+        m_ExitReason = PROCESS_EXIT_NORMAL;
     #elif defined( __LINUX__ ) || defined( __APPLE__ )
         VERIFY( close( m_StdOutRead ) == 0 );
         VERIFY( close( m_StdErrRead ) == 0 );
@@ -532,11 +540,13 @@ int32_t Process::WaitForExit()
                 break;
             }
         }
-
-        return m_ReturnStatus;
+        exitCodeOut = m_ReturnStatus;
+        m_ExitReason = PROCESS_EXIT_NORMAL;
     #else
         #error Unknown platform
     #endif
+
+    return m_ExitReason;
 }
 
 // Detach
@@ -566,9 +576,11 @@ void Process::Detach()
 //------------------------------------------------------------------------------
 bool Process::ReadAllData( AString & outMem,
                            AString & errMem,
-                           uint32_t timeOutMS )
+                           uint32_t timeOutMS,
+                           uint32_t outputInactivityTimeoutMs )
 {
     const Timer t;
+    Timer outputActivityTimer;
 
     #if defined( __LINUX__ )
         // Start with a short sleep interval to allow rapid termination of
@@ -585,6 +597,7 @@ bool Process::ReadAllData( AString & outMem,
         {
             PROFILE_SECTION( "Abort" );
             KillProcessTree();
+            m_ExitReason = PROCESS_EXIT_ABORTED;
             break;
         }
 
@@ -596,6 +609,7 @@ bool Process::ReadAllData( AString & outMem,
         // did we get some data?
         if ( ( prevOutSize != outMem.GetLength() ) || ( prevErrSize != errMem.GetLength() ) )
         {
+            outputActivityTimer.Start();
             #if defined( __LINUX__ )
                 // Reset sleep interval
                 sleepIntervalMS = 1;
@@ -614,7 +628,16 @@ bool Process::ReadAllData( AString & outMem,
                     if ( ( timeOutMS > 0 ) && ( t.GetElapsedMS() >= (float)timeOutMS ) )
                     {
                         Terminate();
+                        m_ExitReason = PROCESS_EXIT_TIMEOUT;
                         return false; // Timed out
+                    }
+
+                    if ( ( outputInactivityTimeoutMs > 0 ) &&
+                         ( outputActivityTimer.GetElapsedMS() >= (float)outputInactivityTimeoutMs) )
+                    {
+                        Terminate();
+                        m_ExitReason = PROCESS_EXIT_TIMEOUT_INACTIVE;
+                        return false;
                     }
 
                     continue; // still running - try to read
@@ -632,7 +655,16 @@ bool Process::ReadAllData( AString & outMem,
                 if ( ( timeOutMS > 0 ) && ( t.GetElapsedMS() >= static_cast<float>( timeOutMS ) ) )
                 {
                     Terminate();
+                    m_ExitReason = PROCESS_EXIT_TIMEOUT;
                     return false; // Timed out
+                }
+
+                if ( ( outputInactivityTimeoutMs > 0 ) &&
+                     ( outputActivityTimer.GetElapsedMS() >= (float)outputInactivityTimeoutMs) )
+                {
+                    Terminate();
+                    m_ExitReason = PROCESS_EXIT_TIMEOUT_INACTIVE;
+                    return false;
                 }
 
                 // no data available, but process is still going, so wait

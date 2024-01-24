@@ -283,16 +283,22 @@ int WrapperMainProcess( const AString & args, const FBuildOptions & options, Sys
 
     // the intermediate process will exit immediately after launching the final
     // process
-    const int32_t result = p.WaitForExit();
-    if ( result == FBUILD_FAILED_TO_SPAWN_WRAPPER_FINAL )
+    int32_t exitCode = 0;
+    const uint8_t exitReason = p.WaitForExit( exitCode );
+    ASSERT( exitReason == Process::PROCESS_EXIT_NORMAL );
+
+    // Avoid warning in release code, but keep the ASSERT
+    (void)(exitReason);
+
+    if ( exitCode == FBUILD_FAILED_TO_SPAWN_WRAPPER_FINAL )
     {
         OUTPUT( "FBuild: Error: Intermediate process failed to spawn the final process.\n" );
-        return result;
+        return exitCode;
     }
-    else if ( result != FBUILD_OK )
+    else if ( exitCode != FBUILD_OK )
     {
-        OUTPUT( "FBuild: Error: Intermediate process failed (%i).\n", result );
-        return result;
+        OUTPUT( "FBuild: Error: Intermediate process failed (%i).\n", exitCode );
+        return exitCode;
     }
 
     // wait for final process to signal as started
@@ -344,9 +350,16 @@ int32_t WrapperModeForWSL( const FBuildOptions & options )
         return FBUILD_FAILED_TO_WSL_WRAPPER;
     }
 
+    int32_t exitCode = 0;
+    const uint8_t exitReason = p.WaitForExit(exitCode);
+    ASSERT( exitReason == Process::PROCESS_EXIT_NORMAL );
+
+    // Avoid warning in release code, but keep the ASSERT
+    (void)(exitReason);
+
     // Return the result from the WSL process, which will itself forward the
     // result of the target process
-    return p.WaitForExit();
+    return exitCode;
 }
 
 //------------------------------------------------------------------------------

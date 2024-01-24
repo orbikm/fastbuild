@@ -199,29 +199,44 @@ const char * TestNode::GetEnvironmentString() const
     // capture all of the stdout and stderr
     AString memOut;
     AString memErr;
-    const bool timedOut = !p.ReadAllData( memOut, memErr, m_TestTimeOut * 1000 );
+
+    // Use whichever value is higher, this specific test's .TestTimeOut parameter, or the command line option for
+    // process timeout.
+    uint32_t overallTimeout = Math::Max( m_TestTimeOut, FBuild::Get().GetOptions().m_ProcessTimeoutSecs );
+    p.ReadAllData( memOut, memErr, overallTimeout * 1000, FBuild::Get().GetOptions().m_ProcessOutputTimeoutSecs * 1000 );
 
     // Get result
-    const int result = p.WaitForExit();
-    if ( p.HasAborted() )
+    int32_t exitCode = 0;
+    const uint8_t exitReason = p.WaitForExit(exitCode);
+    if ( exitReason == Process::PROCESS_EXIT_ABORTED )
     {
         return NODE_RESULT_FAILED;
     }
 
-    if ( ( timedOut == true ) || ( result != 0 ) || ( m_TestAlwaysShowOutput == true ) )
+    const bool showOutput = m_TestAlwaysShowOutput || ( exitReason != Process::PROCESS_EXIT_NORMAL ) || ( exitCode != 0 );
+    if ( showOutput )
     {
         // something went wrong, print details
         Node::DumpOutput( job, memOut );
         Node::DumpOutput( job, memErr );
     }
 
-    if ( timedOut == true )
+    if ( exitReason == Process::PROCESS_EXIT_TIMEOUT )
     {
-        FLOG_ERROR( "Test timed out after %u s (%s)", m_TestTimeOut, m_TestExecutable.Get() );
+        FLOG_ERROR( "Test timed out after %u s (%s)", overallTimeout, m_TestExecutable.Get() );
     }
-    else if ( result != 0 )
+    else if ( ( exitReason != Process::PROCESS_EXIT_NORMAL ) || ( exitCode != 0 ) )
     {
-        FLOG_ERROR( "Test failed. Error: %s Target: '%s'", ERROR_STR( result ), GetName().Get() );
+        AStackString<32> errorStr;
+        if ( exitReason == Process::PROCESS_EXIT_NORMAL )
+        {
+            errorStr = ERROR_STR( exitCode );
+        }
+        else
+        {
+            errorStr = Process::ExitReasonToString( exitReason );
+        }
+        FLOG_ERROR( "Test failed. Error: %s Target: '%s'", errorStr.Get(), GetName().Get() );
     }
 
     // write the test output (saved for pass or fail)
@@ -240,7 +255,7 @@ const char * TestNode::GetEnvironmentString() const
     fs.Close();
 
     // did the test fail?
-    if ( ( timedOut == true ) || ( result != 0 ) )
+    if ( ( exitReason != Process::PROCESS_EXIT_NORMAL ) || ( exitCode != 0 ) )
     {
         return NODE_RESULT_FAILED;
     }

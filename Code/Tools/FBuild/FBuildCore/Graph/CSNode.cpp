@@ -203,16 +203,18 @@ CSNode::~CSNode() = default;
     // capture all of the stdout and stderr
     AString memOut;
     AString memErr;
-    p.ReadAllData( memOut, memErr );
+    p.ReadAllData( memOut, memErr, FBuild::Get().GetOptions().m_ProcessTimeoutSecs * 1000, FBuild::Get().GetOptions().m_ProcessOutputTimeoutSecs * 1000 );
 
     // Get result
-    const int result = p.WaitForExit();
-    if ( p.HasAborted() )
+    int32_t exitCode = 0;
+    const uint8_t exitReason = p.WaitForExit(exitCode);
+
+    if ( exitReason == Process::PROCESS_EXIT_ABORTED )
     {
         return NODE_RESULT_FAILED;
     }
 
-    const bool ok = ( result == 0 );
+    const bool ok = exitReason == Process::PROCESS_EXIT_NORMAL && ( exitCode == 0 );
 
     // Show output if desired
     const bool showOutput = ( ok == false ) ||
@@ -225,7 +227,17 @@ CSNode::~CSNode() = default;
 
     if ( !ok )
     {
-        FLOG_ERROR( "Failed to build Object. Error: %s Target: '%s'", ERROR_STR( result ), GetName().Get() );
+        AStackString<32> errorStr;
+        if (exitReason == Process::PROCESS_EXIT_NORMAL)
+        {
+            errorStr = ERROR_STR( exitCode );
+        }
+        else
+        {
+            errorStr = Process::ExitReasonToString( exitReason );
+        }
+
+        FLOG_ERROR( "Failed to build Object. Error: %s Target: '%s'", errorStr.Get(), GetName().Get() );
         return NODE_RESULT_FAILED;
     }
 
