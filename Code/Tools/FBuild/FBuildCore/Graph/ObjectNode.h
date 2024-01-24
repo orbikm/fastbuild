@@ -259,19 +259,20 @@ private:
                             const char * workingDir = nullptr );
 
         // determine overall result
-        inline int                      GetResult() const { return m_Result; }
+        inline int                      GetExitCode() const { return m_ExitCode; }
+        inline uint8_t                  GetExitReason() const { return m_ExitReason; }
 
         // access output/error
         inline const AString &          GetOut() const { return m_Out; }
         inline const AString &          GetErr() const { return m_Err; }
-        inline bool                     HasAborted() const { return m_Process.HasAborted(); }
 
     private:
         bool            m_HandleOutput;
         Process         m_Process;
         AString         m_Out;
         AString         m_Err;
-        int             m_Result;
+        int             m_ExitCode;
+        uint8_t         m_ExitReason;
     };
 
     // Exposed Properties

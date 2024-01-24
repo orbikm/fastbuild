@@ -25,7 +25,36 @@ public:
                                        const char * environment,
                                        bool shareHandles = false );
     [[nodiscard]] bool          IsRunning() const;
-    int32_t                     WaitForExit();
+
+    enum ExitReason : uint8_t
+    {
+        PROCESS_EXIT_UNDEFINED        = 0, // Special status indicating exit reason is not defined yet
+        PROCESS_EXIT_NORMAL           = 1, // Process has exited normally
+        PROCESS_EXIT_ABORTED          = 2, // Process was aborted
+        PROCESS_EXIT_TIMEOUT          = 3, // Process timed out (overall timeout)
+        PROCESS_EXIT_TIMEOUT_INACTIVE = 4  // Process timed out (from inactivity)
+    };
+
+    static const char* ExitReasonToString( uint8_t exitReason )
+    {
+        switch ( exitReason )
+        {
+        case PROCESS_EXIT_UNDEFINED:
+            return "Undefined";
+        case PROCESS_EXIT_NORMAL:
+            return "Normal";
+        case PROCESS_EXIT_ABORTED:
+            return "Aborted";
+        case PROCESS_EXIT_TIMEOUT:
+            return "Process Timeout";
+        case PROCESS_EXIT_TIMEOUT_INACTIVE:
+            return "Process Timeout Inactive";
+        default:
+            return "Unknown";
+        }
+    }
+
+    ExitReason                  WaitForExit(int32_t & exitCodeOut);
     void                        Detach();
     void                        KillProcessTree();
 
@@ -33,13 +62,14 @@ public:
     // NOTE: Owner must free the returned memory!
     bool                        ReadAllData( AString & memOut,
                                              AString & errOut,
-                                             uint32_t timeOutMS = 0 );
+                                             uint32_t timeOutMS = 0,
+                                             uint32_t outputInactivityTimeoutMs = 0 );
 
     #if defined( __WINDOWS__ )
         // Prevent handles being redirected
         void                    DisableHandleRedirection() { m_RedirectHandles = false; }
     #endif
-    [[nodiscard]] bool          HasAborted() const { return m_HasAborted; }
+    [[nodiscard]] bool          HasAborted() const;
     [[nodiscard]] static uint32_t   GetCurrentId();
 
 private:
@@ -86,7 +116,7 @@ private:
         int m_StdOutRead;
         int m_StdErrRead;
     #endif
-    bool m_HasAborted;
+    ExitReason m_ExitReason;
     const volatile bool * m_MainAbortFlag; // This member is set when we must cancel processes asap when the main process dies.
     const volatile bool * m_AbortFlag;
 };

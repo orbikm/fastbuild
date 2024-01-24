@@ -208,15 +208,17 @@ ExecNode::~ExecNode()
     // capture all of the stdout and stderr
     AString memOut;
     AString memErr;
-    p.ReadAllData( memOut, memErr );
+    p.ReadAllData( memOut, memErr, FBuild::Get().GetOptions().m_ProcessTimeoutSecs * 1000, FBuild::Get().GetOptions().m_ProcessOutputTimeoutSecs * 1000 );
 
     // Get result
-    const int result = p.WaitForExit();
-    if ( p.HasAborted() )
+    int32_t exitCode = 0;
+    const uint8_t exitReason = p.WaitForExit( exitCode );
+
+    if ( exitReason == Process::PROCESS_EXIT_ABORTED )
     {
         return NODE_RESULT_FAILED;
     }
-    const bool buildFailed = ( result != m_ExecReturnCode );
+    const bool buildFailed = (exitReason != Process::PROCESS_EXIT_NORMAL) || ( exitCode != m_ExecReturnCode );
 
     // Print output if appropriate
     if ( buildFailed ||
@@ -230,7 +232,16 @@ ExecNode::~ExecNode()
     // did the executable fail?
     if ( buildFailed )
     {
-        FLOG_ERROR( "Execution failed. Error: %s Target: '%s'", ERROR_STR( result ), GetName().Get() );
+        AStackString<32> errorStr;
+        if ( exitReason == Process::PROCESS_EXIT_NORMAL )
+        {
+            errorStr = ERROR_STR( exitCode );
+        }
+        else
+        {
+            errorStr = Process::ExitReasonToString( exitReason );
+        }
+        FLOG_ERROR( "Execution failed. Error: %s Target: '%s'", errorStr.Get(), GetName().Get() );
         return NODE_RESULT_FAILED;
     }
 
