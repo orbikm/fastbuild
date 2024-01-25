@@ -229,7 +229,10 @@ void TestCLR::TestCLRToCPPBridge() const
 
         Process p;
         p.Spawn( "../tmp/Test/CLR/Bridge/Bridge.exe", nullptr, nullptr, nullptr );
-        int ret = p.WaitForExit();
+
+        int ret = 0;
+        const uint8_t exitReason = p.WaitForExit(ret);
+        TEST_ASSERT( exitReason == Process::PROCESS_EXIT_NORMAL ); // verify expected exit reason
         TEST_ASSERT( ret == 15613223 ); // verify expected ret code
     #endif
 }

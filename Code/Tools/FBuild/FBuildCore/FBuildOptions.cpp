@@ -351,6 +351,36 @@ FBuildOptions::OptionsResult FBuildOptions::ProcessCommandLine( int argc, char *
                 m_NoUnity = true;
                 continue;
             }
+            else if ( thisArg == "-processtimeout" )
+            {
+                const int processTimeoutIndex = ( i + 1 );
+                uint32_t processTimeoutSecs;
+                if ( ( processTimeoutIndex >= argc ) ||
+                     ( AString::ScanS( argv[processTimeoutIndex], "%u", &processTimeoutSecs ) != 1 ) )
+                {
+                    OUTPUT( "FBuild: Error: Missing or bad <timeout (secs)> for '-processtimeout' argument\n" );
+                    OUTPUT( "Try \"%s -help\"\n", programName.Get() );
+                    return OPTIONS_ERROR;
+                }
+                m_ProcessTimeoutSecs = processTimeoutSecs;
+                i++; // skip extra arg we've consumed
+                continue;
+            }
+            else if ( thisArg == "-processoutputtimeout" )
+            {
+                const int processOutputTimeoutIndex = ( i + 1 );
+                uint32_t processOutputTimeoutSecs;
+                if ( ( processOutputTimeoutIndex >= argc ) ||
+                     ( AString::ScanS( argv[processOutputTimeoutIndex], "%u", &processOutputTimeoutSecs ) != 1 ) )
+                {
+                    OUTPUT( "FBuild: Error: Missing or bad <timeout (secs)> for '-processoutputtimeout' argument\n" );
+                    OUTPUT( "Try \"%s -help\"\n", programName.Get() );
+                    return OPTIONS_ERROR;
+                }
+                m_ProcessOutputTimeoutSecs = processOutputTimeoutSecs;
+                i++; // skip extra arg we've consumed
+                continue;
+            }
             else if ( thisArg == "-profile" )
             {
                 m_Profile = true;
@@ -671,6 +701,13 @@ void FBuildOptions::DisplayHelp( const AString & programName ) const
             " -nosummaryonerror Hide the summary if the build fails. Implies -summary.\n"
             " -profile          Output an fbuild_profiling.json describing the build.\n"
             " -progress         Show build progress bar even if stdout is redirected.\n"
+            " -processoutputtimeout <timeout (secs)>\n"
+            "                   Specify a timeout for output inactivity for spawned build\n"
+            "                   processes (in seconds) (process times out after <timeout> seconds\n"
+            "                   if no output is read on stdout or stderr) (default: 0, no timeout)\n"
+            " -processtimeout <timeout (secs)>\n"
+            "                   Specify an overall timeout for any spawned build processes\n"
+            "                   processes (in seconds) (default: 0, no timeout)\n"
             " -quiet            Don't show build output.\n"
             " -report[=json|html]\n"
             "                   Ouput report at build end. (Increases build time)\n"
