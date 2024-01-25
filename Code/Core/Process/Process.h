@@ -69,7 +69,6 @@ public:
         // Prevent handles being redirected
         void                    DisableHandleRedirection() { m_RedirectHandles = false; }
     #endif
-    [[nodiscard]] bool          HasAborted() const { return m_ExitReason == PROCESS_EXIT_ABORTED; }
     [[nodiscard]] static uint32_t   GetCurrentId();
 
 private:
