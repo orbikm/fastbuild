@@ -226,7 +226,7 @@ const char * TestNode::GetEnvironmentString() const
 
     if ( exitReason == Process::PROCESS_EXIT_TIMEOUT )
     {
-        FLOG_ERROR( "Test timed out after %u s (%s)", overallTimeout, m_TestExecutable.Get() );
+        FLOG_ERROR( "Test timed out after %u s (%s)", timeOut, m_TestExecutable.Get() );
     }
     else if ( ( exitReason != Process::PROCESS_EXIT_NORMAL ) || ( exitCode != 0 ) )
     {

@@ -798,6 +798,14 @@ bool Process::ReadAllData( AString & outMem,
     #endif
 }
 
+// HasAborted
+//------------------------------------------------------------------------------
+bool Process::HasAborted() const
+{
+    return ( m_MainAbortFlag && AtomicLoadRelaxed( m_MainAbortFlag ) ) ||
+           ( m_AbortFlag && AtomicLoadRelaxed( m_AbortFlag ) );
+}
+
 // Terminate
 //------------------------------------------------------------------------------
 void Process::Terminate()
