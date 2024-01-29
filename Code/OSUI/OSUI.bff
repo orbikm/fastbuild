@@ -35,7 +35,8 @@
                 .CompilerInputUnity     = '$ProjectName$-UnityObjCPP-$Platform$-$BuildConfigName$'
                 .CompilerOutputExtension= '.mm.o'
                 .CompilerOptions        + ' -fobjc-arc'
-                                        + ' -x objective-c'
+//                                        + ' -x objective-c' // RIOT_TAG
+
                 .CompilerOutputPath     = '$OutputBase$/$ProjectName$/'
             }
         #endif
