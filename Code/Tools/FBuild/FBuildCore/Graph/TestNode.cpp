@@ -199,10 +199,14 @@ const char * TestNode::GetEnvironmentString() const
     AString memOut;
     AString memErr;
 
-    // Use whichever value is higher, this specific test's .TestTimeOut parameter, or the command line option for
-    // process timeout.
-    const uint32_t overallTimeout = Math::Max( m_TestTimeOut, FBuild::Get().GetOptions().m_ProcessTimeoutSecs );
-    p.ReadAllData( memOut, memErr, overallTimeout * 1000, FBuild::Get().GetOptions().m_ProcessOutputTimeoutSecs * 1000 );
+    // Use the TestTimeOut variable defined in the Test Node, if it is specified, otherwise, use the CLI specified
+    // default.
+    uint32_t timeOut = FBuild::Get().GetOptions().m_ProcessTimeoutSecs;
+    if ( m_TestTimeOut != 0 )
+    {
+        timeOut = m_TestTimeOut;
+    }
+    p.ReadAllData( memOut, memErr, timeOut * 1000, FBuild::Get().GetOptions().m_ProcessOutputTimeoutSecs * 1000 );
 
     // Get result
     int32_t exitCode = 0;
