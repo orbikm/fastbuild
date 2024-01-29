@@ -2372,7 +2372,7 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
     }
 
     // failed?
-    const bool buildFailed = ( m_ExitReason == Process::PROCESS_EXIT_NORMAL && m_ExitReason != 0 ) || ( m_ExitReason != Process::PROCESS_EXIT_NORMAL );
+    const bool buildFailed = ( m_ExitReason == Process::PROCESS_EXIT_NORMAL && m_ExitCode != 0 ) || ( m_ExitReason != Process::PROCESS_EXIT_NORMAL );
     if ( buildFailed )
     {
         const bool showOutput = m_HandleOutput ||
