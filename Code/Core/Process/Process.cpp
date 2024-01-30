@@ -546,6 +546,11 @@ Process::ExitReason Process::WaitForExit(int32_t & exitCodeOut)
         #error Unknown platform
     #endif
 
+    if (HasAborted())
+    {
+        m_ExitReason = PROCESS_EXIT_ABORTED;
+    }
+
     return m_ExitReason;
 }
 
